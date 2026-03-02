@@ -216,9 +216,15 @@ export class NetworkComponent implements OnInit, OnDestroy {
         this.loadingMap = true;
         this.meshService.getAllNodes().subscribe({
             next: (nodes) => {
-                this.allNodes = nodes.filter(n => n.last_lat && n.last_long);
+                if (nodes && Array.isArray(nodes)) {
+                    this.allNodes = nodes.filter(n => n && n.last_lat && n.last_long);
+                    console.log(`Found ${this.allNodes.length} nodes with coordinates.`);
+                } else {
+                    this.allNodes = [];
+                }
                 this.loadingMap = false;
-                setTimeout(() => this.initMap(), 100);
+                // Wait for the DOM to be fully ready and the 'hidden' class to be removed
+                setTimeout(() => this.initMap(), 500);
             },
             error: (err) => {
                 console.error('Error fetching nodes for map:', err);
@@ -241,29 +247,33 @@ export class NetworkComponent implements OnInit, OnDestroy {
             }
 
             if (this.map) {
+                this.map.off();
                 this.map.remove();
                 this.map = undefined;
             }
 
             this.map = L.map('main-map', {
                 zoomControl: true,
-                scrollWheelZoom: true
+                scrollWheelZoom: true,
+                fadeAnimation: true
             }).setView([23.6345, -102.5528], 5);
 
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap contributors',
-                maxZoom: 19
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19,
+                crossOrigin: true
             }).addTo(this.map);
 
             this.updateMapMarkers(L);
 
-            // Critical: Force resize for Vercel/Production
-            setTimeout(() => {
-                if (this.map) this.map.invalidateSize();
-            }, 500);
+            // Multiple attempts to fix gray tiles in production
+            const resize = () => { if (this.map) this.map.invalidateSize(); };
+            setTimeout(resize, 100);
+            setTimeout(resize, 500);
+            setTimeout(resize, 1000);
 
         } catch (error) {
-            console.error('Error initializing main map:', error);
+            console.error('CRITICAL: Error initializing main map:', error);
         }
     }
 
@@ -277,11 +287,12 @@ export class NetworkComponent implements OnInit, OnDestroy {
             const mapId = `detail-map-${node.node_id}`;
             const mapContainer = document.getElementById(mapId);
             if (!mapContainer) {
-                console.warn(`Map container "${mapId}" not found`);
+                console.warn(`Detail map container "${mapId}" not found`);
                 return;
             }
 
             if (this.detailMap) {
+                this.detailMap.off();
                 this.detailMap.remove();
                 this.detailMap = undefined;
             }
@@ -292,12 +303,14 @@ export class NetworkComponent implements OnInit, OnDestroy {
             this.detailMap = L.map(mapId, {
                 zoomControl: true,
                 scrollWheelZoom: false,
-                dragging: true
+                dragging: true,
+                fadeAnimation: true
             }).setView([lat, lng], 13);
 
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OSM',
-                maxZoom: 19
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19,
+                crossOrigin: true
             }).addTo(this.detailMap);
 
             L.circleMarker([lat, lng], {
@@ -309,12 +322,11 @@ export class NetworkComponent implements OnInit, OnDestroy {
                 fillOpacity: 0.9
             }).addTo(this.detailMap);
 
-            // Force resize to fix gray tiles issue
-            setTimeout(() => {
-                if (this.detailMap) this.detailMap.invalidateSize();
-            }, 500);
+            const resize = () => { if (this.detailMap) this.detailMap.invalidateSize(); };
+            setTimeout(resize, 400);
+            setTimeout(resize, 1000);
         } catch (error) {
-            console.error('Error initializing detail map:', error);
+            console.error('CRITICAL: Error initializing detail map:', error);
         }
     }
 

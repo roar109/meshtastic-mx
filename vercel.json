@@ -1,5 +1,7 @@
 {
     "version": 2,
+    "cleanUrls": true,
+    "trailingSlash": false,
     "rewrites": [
         {
             "source": "/mesh-api/(.*)",
@@ -12,6 +14,10 @@
         {
             "source": "/meshtastic-resource/(.*)",
             "destination": "https://api.meshtastic.org/resource/$1"
+        },
+        {
+            "source": "/(.*)",
+            "destination": "/index.html"
         }
     ]
 }
