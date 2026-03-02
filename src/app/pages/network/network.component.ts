@@ -4,12 +4,11 @@ import { FormsModule } from '@angular/forms';
 import { MeshService } from '../../services/mesh.service';
 import { MeshNode, MeshPacket, TelemetryMetrics } from '../../models/mesh.model';
 import { Subscription, interval } from 'rxjs';
-import { SafeUrlPipe } from '../../pipes/safe-url.pipe';
 
 @Component({
     selector: 'app-network',
     standalone: true,
-    imports: [CommonModule, FormsModule, SafeUrlPipe],
+    imports: [CommonModule, FormsModule],
     templateUrl: './network.component.html',
     styleUrl: './network.component.scss'
 })
@@ -32,7 +31,9 @@ export class NetworkComponent implements OnInit, OnDestroy {
 
     // Map
     private map?: any;
+    private detailMap?: any;
     private markers: any[] = [];
+    private detailMarkers: any[] = [];
 
     // Detailed View
     selectedNode: MeshNode | null = null;
@@ -154,6 +155,10 @@ export class NetworkComponent implements OnInit, OnDestroy {
                     this.latestMetrics = this.parseTelemetry(packets[0].payload);
                 }
                 this.loadingDetails = false;
+                // Initialize small map for details
+                if (node.last_lat) {
+                    setTimeout(() => this.initDetailMap(node), 300);
+                }
             },
             error: (err) => {
                 console.error('Error fetching node telemetry:', err);
@@ -192,6 +197,10 @@ export class NetworkComponent implements OnInit, OnDestroy {
         this.nodePackets = [];
         this.nodeTelemetry = [];
         this.latestMetrics = null;
+        if (this.detailMap) {
+            this.detailMap.remove();
+            this.detailMap = undefined;
+        }
     }
 
     setTab(tab: 'nodes' | 'messages' | 'map'): void {
@@ -221,20 +230,61 @@ export class NetworkComponent implements OnInit, OnDestroy {
     async initMap() {
         if (!isPlatformBrowser(this.platformId)) return;
 
-        // Dynamic import to avoid SSR issues
         const L = await import('leaflet');
+        const mapContainer = document.getElementById('main-map');
+        if (!mapContainer) return;
 
         if (this.map) {
             this.map.remove();
         }
 
-        this.map = L.map('main-map').setView([23.6345, -102.5528], 5); // Mexico center
+        this.map = L.map('main-map', {
+            zoomControl: true,
+            scrollWheelZoom: true
+        }).setView([23.6345, -102.5528], 5);
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        L.tileLayer('https://{s}.tile.osm.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors'
         }).addTo(this.map);
 
         this.updateMapMarkers(L);
+    }
+
+    async initDetailMap(node: MeshNode) {
+        if (!isPlatformBrowser(this.platformId) || !node.last_lat || !node.last_long) return;
+
+        const L = await import('leaflet');
+        const mapContainer = document.getElementById(`detail-map-${node.node_id}`);
+        if (!mapContainer) return;
+
+        if (this.detailMap) {
+            this.detailMap.remove();
+        }
+
+        const lat = (node.last_lat ?? 0) / 10000000;
+        const lng = (node.last_long ?? 0) / 10000000;
+
+        this.detailMap = L.map(`detail-map-${node.node_id}`, {
+            zoomControl: true,
+            scrollWheelZoom: false,
+            dragging: true
+        }).setView([lat, lng], 13);
+
+        L.tileLayer('https://{s}.tile.osm.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OSM'
+        }).addTo(this.detailMap);
+
+        L.circleMarker([lat, lng], {
+            radius: 10,
+            fillColor: '#006847',
+            color: '#ffffff',
+            weight: 3,
+            opacity: 1,
+            fillOpacity: 0.9
+        }).addTo(this.detailMap);
+
+        // Force resize to fix gray tiles issue
+        setTimeout(() => this.detailMap.invalidateSize(), 200);
     }
 
     updateMapMarkers(L: any) {
