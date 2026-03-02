@@ -230,61 +230,92 @@ export class NetworkComponent implements OnInit, OnDestroy {
     async initMap() {
         if (!isPlatformBrowser(this.platformId)) return;
 
-        const L = await import('leaflet');
-        const mapContainer = document.getElementById('main-map');
-        if (!mapContainer) return;
+        try {
+            const LeafletModule = await import('leaflet');
+            const L = (LeafletModule as any).default || LeafletModule;
 
-        if (this.map) {
-            this.map.remove();
+            const mapContainer = document.getElementById('main-map');
+            if (!mapContainer) {
+                console.warn('Map container "main-map" not found');
+                return;
+            }
+
+            if (this.map) {
+                this.map.remove();
+                this.map = undefined;
+            }
+
+            this.map = L.map('main-map', {
+                zoomControl: true,
+                scrollWheelZoom: true
+            }).setView([23.6345, -102.5528], 5);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors',
+                maxZoom: 19
+            }).addTo(this.map);
+
+            this.updateMapMarkers(L);
+
+            // Critical: Force resize for Vercel/Production
+            setTimeout(() => {
+                if (this.map) this.map.invalidateSize();
+            }, 500);
+
+        } catch (error) {
+            console.error('Error initializing main map:', error);
         }
-
-        this.map = L.map('main-map', {
-            zoomControl: true,
-            scrollWheelZoom: true
-        }).setView([23.6345, -102.5528], 5);
-
-        L.tileLayer('https://{s}.tile.osm.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap contributors'
-        }).addTo(this.map);
-
-        this.updateMapMarkers(L);
     }
 
     async initDetailMap(node: MeshNode) {
         if (!isPlatformBrowser(this.platformId) || !node.last_lat || !node.last_long) return;
 
-        const L = await import('leaflet');
-        const mapContainer = document.getElementById(`detail-map-${node.node_id}`);
-        if (!mapContainer) return;
+        try {
+            const LeafletModule = await import('leaflet');
+            const L = (LeafletModule as any).default || LeafletModule;
 
-        if (this.detailMap) {
-            this.detailMap.remove();
+            const mapId = `detail-map-${node.node_id}`;
+            const mapContainer = document.getElementById(mapId);
+            if (!mapContainer) {
+                console.warn(`Map container "${mapId}" not found`);
+                return;
+            }
+
+            if (this.detailMap) {
+                this.detailMap.remove();
+                this.detailMap = undefined;
+            }
+
+            const lat = (node.last_lat ?? 0) / 10000000;
+            const lng = (node.last_long ?? 0) / 10000000;
+
+            this.detailMap = L.map(mapId, {
+                zoomControl: true,
+                scrollWheelZoom: false,
+                dragging: true
+            }).setView([lat, lng], 13);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OSM',
+                maxZoom: 19
+            }).addTo(this.detailMap);
+
+            L.circleMarker([lat, lng], {
+                radius: 10,
+                fillColor: '#006847',
+                color: '#ffffff',
+                weight: 3,
+                opacity: 1,
+                fillOpacity: 0.9
+            }).addTo(this.detailMap);
+
+            // Force resize to fix gray tiles issue
+            setTimeout(() => {
+                if (this.detailMap) this.detailMap.invalidateSize();
+            }, 500);
+        } catch (error) {
+            console.error('Error initializing detail map:', error);
         }
-
-        const lat = (node.last_lat ?? 0) / 10000000;
-        const lng = (node.last_long ?? 0) / 10000000;
-
-        this.detailMap = L.map(`detail-map-${node.node_id}`, {
-            zoomControl: true,
-            scrollWheelZoom: false,
-            dragging: true
-        }).setView([lat, lng], 13);
-
-        L.tileLayer('https://{s}.tile.osm.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OSM'
-        }).addTo(this.detailMap);
-
-        L.circleMarker([lat, lng], {
-            radius: 10,
-            fillColor: '#006847',
-            color: '#ffffff',
-            weight: 3,
-            opacity: 1,
-            fillOpacity: 0.9
-        }).addTo(this.detailMap);
-
-        // Force resize to fix gray tiles issue
-        setTimeout(() => this.detailMap.invalidateSize(), 200);
     }
 
     updateMapMarkers(L: any) {
